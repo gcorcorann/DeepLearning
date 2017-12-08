@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import random
+import matplotlib.pyplot as plt
 import numpy as np
 import glob
 import cv2
@@ -56,6 +56,8 @@ class Network():
         if X_test is not None and y_test is not None:
             n_test = len(X_test)
         n = len(X_train)
+        train_cost = []
+        val_acc = []
         for i in range(epochs):
             # random shuffle
             idx = np.random.permutation(n)
@@ -67,11 +69,15 @@ class Network():
             for mini_batch in mini_batches:
                 c += self.update_mini_batch(mini_batch, lr)
             c /= (2*len(X_train))
+            train_cost.append(c)
+            acc = (self.evaluate(X_test, y_test) / n_test) * 100
+            val_acc.append(acc)
             if X_test is not None and y_test is not None:
-                print("Epoch {0}: cost {1}, accuracy: {2}".format(i, c, 
-                    self.evaluate(X_test,y_test)/n_test))
+                print("Epoch {0}: cost {1}, accuracy: {2}".format(i+1, c, acc))
             else:
-                print("Epoch {0}: cost {1}".format(i, c))
+                print("Epoch {0}: cost {1}".format(i+1, c))
+
+        return train_cost, val_acc
 
     def backprop(self, x, y):
         db = [np.zeros(b.shape) for b in self.biases]
@@ -153,8 +159,22 @@ def main():
     print('y_test:', y_test.shape)
     # create neural network
     num_features = X_train.shape[1]
-    net = Network([num_features, 50, 2])
-    net.SGD(X_train, y_train, 100, 10, 0.1, X_val, y_val)
+    net = Network([num_features, 400, 2])
+    cost, acc = net.SGD(X_train, y_train, 50, 10, 0.1, X_val, y_val)
+    print('Best Validation Accuracy {0}, Epoch {1}'.format(max(acc),
+        np.argmax(acc)+1))
+
+    # display plots
+    plt.figure()
+    plt.subplot(121), plt.plot(cost)
+    plt.title('Training Cost'), plt.xlabel('Epoch'), plt.ylabel('Cost')
+    plt.ylim([0,0.5])
+    plt.subplot(122), plt.plot(acc)
+    plt.title('Validation Accuracy'), plt.xlabel('Epoch'),
+    plt.ylabel('Accuracy')
+    plt.ylim([0,100])
+    plt.show()
+
 
 
 if __name__ == '__main__':
