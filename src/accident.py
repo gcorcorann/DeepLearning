@@ -139,6 +139,8 @@ def main():
     """
     Main Function.
     """
+    # set random seed for reproducibility
+    np.random.seed(0)
     # load data
     X = np.load('X.npy')
     y = np.load('y.npy')
