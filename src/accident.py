@@ -1,8 +1,208 @@
 #!/usr/bin/env python3
+"""
+accident.py
+"""
+# Standard Library
+import glob
+import json
+
+# Third-party Libraries
 import matplotlib.pyplot as plt
 import numpy as np
-import glob
 import cv2
+
+# set random seet for reproducibility
+np.random.seed(1234)
+
+### Define the quadratic and cross-entropy cost functions
+
+class CrossEntropyCost():
+    """
+    Cross Entropy Cost Function and Derivative.
+    """
+    @staticmethod
+    def fn(a, y):
+        return np.sum(np.nan_to_num(-y*np.log(a)-(1-y)*np.log(1-a)))
+
+    @staticmethod
+    def delta(z, a, y):
+        return a-y
+
+class QuadraticCost():
+    """
+    Quadratic Cost Function and Derivative.
+    """
+    @staticmethod
+    def fn(a, y):
+        return 0.5*np.linalg.norm(a-y)**2
+
+    @staticmethod
+    def delta(z, a, y):
+        return (a-y) * sigmoid_prime(z)
+
+
+### Main Network class
+class Network():
+    """
+    Neural Network Class.
+    """
+    def __init__(self, sizes, cost=CrossEntropyCost):
+        self.num_layers = len(sizes)
+        self.sizes = sizes
+        self.default_weight_initializer()
+        self.cost = cost
+
+    def default_weight_initializer(self):
+        """
+        New and improved approach to weight initializaion.
+        """
+        self.biases = [np.random.randn(y, 1) for y in self.sizes[1:]]
+        self.weights = [np.random.randn(x, y) / np.sqrt(x)
+                for x, y in zip(self.sizes[:-1], self.sizes[1:])]
+
+    def large_weight_initializer(self):
+        self.biases = [np.random.randn(y, 1) for y in self.sizes[1:]]
+        self.weights = [np.random.randn(x, y)
+                for x, y in zip(self.sizes[:-1], self.sizes[1:])]
+    
+    def feedforward(self, a):
+        for b, w in zip(self.biases, self.weights):
+            a = sigmoid(np.dot(a, w) + b.T)
+        return a
+
+    def SGD(self, training_data, epochs, batch_size, lr, reg=0.0,
+            evaluation_data=None,
+            monitor_evaluation_cost=False,
+            monitor_evaluation_accuracy=False,
+            monitor_training_cost=False,
+            monitor_training_accuracy=False):
+        """
+        Train the neural network using mini-batch stochastic gradient descent.
+        """
+        if evaluation_data:
+            n_data = len(evaluation_data[0])
+        n = len(training_data[0])
+        evaluation_cost, evaluation_accuracy = [], []
+        training_cost, training_accuracy = [], []
+        for i in range(epochs):
+            training_data = shuffle(training_data)
+            mini_batches = [
+                    (training_data[0][k:k+batch_size],
+                    training_data[1][k:k+batch_size])
+                    for k in range(0, n, batch_size)
+                    ]
+            for mini_batch in mini_batches:
+                self.update_mini_batch(mini_batch, lr, reg, n)
+            print('\tEpoch {} training complete.'.format(i))
+            if monitor_training_cost:
+                cost = self.total_cost(training_data, reg)
+                training_cost.append(cost)
+                print('\tCost on training data: {}'.format(cost)) 
+            if monitor_training_accuracy:
+                accuracy = self.accuracy(training_data)
+                training_accuracy.append(accuracy)
+                print('\tAccuracy on training data: {} / {}'.format(accuracy, 
+                    n))
+            if monitor_evaluation_cost:
+                cost = self.total_cost(evaluation_data, reg)
+                evaluation_cost.append(cost)
+                print('\tCost on evaluation data: {}'.format(cost))
+            if monitor_evaluation_accuracy:
+                accuracy = self.accuracy(evaluation_data) / n_data * 100
+                evaluation_accuracy.append(accuracy)
+                print('\tAccuracy on evaluation data: {}'.format(accuracy))
+            print()
+        return evaluation_cost, evaluation_accuracy, \
+                training_cost, training_accuracy
+
+    def update_mini_batch(self, mini_batch, lr, reg, n):
+        x, y = mini_batch
+        db, dw = self.backprop(x, y)
+        self.weights = [(1-lr*(reg/n))*w - (lr/len(x))*nw
+                for w, nw in zip(self.weights, dw)]
+        self.biases = [b - (lr/len(x))*nb 
+                for b, nb in zip(self.biases, db)]
+
+    def backprop(self, x, y):
+        db = [np.zeros(b.shape) for b in self.biases]
+        dw = [np.zeros(w.shape) for w in self.weights]
+        # feedforward
+        activation = x
+        activations = [x]
+        zs = []
+        for b, w in zip(self.biases, self.weights):
+            z = np.dot(activation, w) + b.T
+            zs.append(z)
+            activation = sigmoid(z)
+            activations.append(activation)
+        # backward pass
+        delta = (self.cost).delta(zs[-1], activations[-1], y)
+        db[-1] = np.reshape(np.sum(delta, axis=0), (-1, 1))
+        dw[-1] = np.dot(activations[-2].T, delta)
+        for l in range(2, self.num_layers):
+            z = zs[-l]
+            sp = sigmoid_prime(z)
+            delta = np.dot(delta, self.weights[-l+1].T) * sp
+            db[-l] = np.reshape(np.sum(delta, axis=0), (-1, 1))
+            dw[-l] = np.dot(activations[-l-1].T, delta)
+        return db, dw
+
+    def accuracy(self, data):
+        x, y = data
+        a = self.feedforward(x)
+        y_pred = np.argmax(a, axis=1)
+        y = np.argmax(y, axis=1)
+        return np.sum(y == y_pred)
+
+    def total_cost(self, data, reg):
+        """
+        Return total cost for ``data``.
+        """
+        cost = 0.0
+        X_data, y_data = data
+        n = 3000
+        for i in range(0, len(X_data), n):
+            x = X_data[i:i+n]
+            y = y_data[i:i+n]
+            a = self.feedforward(x)
+            cost += self.cost.fn(a, y) / len(X_data)
+        cost += 0.5 * (reg/len(X_data)) * sum(np.linalg.norm(w)**2 
+                for w in self.weights)
+        return cost
+
+    def save(self, filename):
+        """
+        Save the neural network to the file ``filename``.
+        """
+        data = {'sizes': self.sizes,
+                'weights': [w.tolist() for w in self.weights],
+                'biases': [b.tolist() for b in self.biases],
+                'cost': str(self.cost.__name__)}
+        f = open(filename, 'w')
+        json.dump(data, f)
+        f.close()
+
+### Loading a Network
+def load(filename):
+    """
+    Load a neural network from file.
+    """
+    f = open(filename, 'r')
+    data = json.load(f)
+    f.close()
+    cost = getattr(sys.modules[__name__], data['cost'])
+    net = Network(data['sizes'], cost=cost)
+    net.weights = [np.array(w) for w in data['weights']]
+    net.biases = [np.array(b) for b in data['biases']]
+    return net
+
+### Miscellaneous functions
+def sigmoid(z):
+    z = np.clip(z, -500, 500)
+    return 1.0 / (1.0 + np.exp(-z))
+
+def sigmoid_prime(z):
+    return sigmoid(z) * (1 - sigmoid(z))
 
 def read_data(data_path, width, height):
     """
@@ -31,153 +231,92 @@ def read_data(data_path, width, height):
         img = img / img_min.max()
         X[i] = img
         i += 1
-    y = np.zeros((num_instances, 2), dtype=np.uint8)
+    y = np.zeros((num_instances, 2), dtype=np.int)
     y[:len(imgs_pos), 1] = 1
     y[len(imgs_pos):, 0] = 1
-    np.save('X.npy', X)
-    np.save('y.npy', y)
+    np.save('../data/X.npy', X)
+    np.save('../data/y.npy', y)
     return X, y
 
-class Network():
-    def __init__(self, sizes):
-        self.num_layers = len(sizes)
-        self.sizes = sizes
-        self.biases = [np.random.randn(y,1) for y in sizes[1:]]
-        self.weights = [np.random.randn(x, y)
-                for x, y in zip(sizes[:-1], sizes[1:])]
-    
-    def feedforward(self, a):
-        for b, w in zip(self.biases, self.weights):
-            a = sigmoid(np.dot(a, w) + b.T)
-        return a
+def shuffle(data):
+    X, y = data
+    idx = np.random.permutation(len(X))
+    X = X[idx]
+    y = y[idx]
+    return X, y
 
-    def SGD(self, X_train, y_train, epochs, batch_size, lr, X_test=None,
-            y_test=None):
-        if X_test is not None and y_test is not None:
-            n_test = len(X_test)
-        n = len(X_train)
-        train_cost = []
-        val_acc = []
-        for i in range(epochs):
-            # random shuffle
-            idx = np.random.permutation(n)
-            X_train = X_train[idx]
-            y_train = y_train[idx]
-            mini_batches = [(X_train[k:k+batch_size], y_train[k:k+batch_size])
-                    for k in range(0, n, batch_size)]
-            c = 0.0
-            for mini_batch in mini_batches:
-                c += self.update_mini_batch(mini_batch, lr)
-            c /= (2*len(X_train))
-            train_cost.append(c)
-            acc = (self.evaluate(X_test, y_test) / n_test) * 100
-            val_acc.append(acc)
-            if X_test is not None and y_test is not None:
-                print("Epoch {0}: cost {1}, accuracy: {2}".format(i+1, c, acc))
-            else:
-                print("Epoch {0}: cost {1}".format(i+1, c))
-
-        return train_cost, val_acc
-
-    def backprop(self, x, y):
-        db = [np.zeros(b.shape) for b in self.biases]
-        dw = [np.zeros(w.shape) for w in self.weights]
-        # feedforward
-        activation = x
-        activations = [x]
-        zs = []
-        for b, w in zip(self.biases, self.weights):
-            z = np.dot(activation, w) + b.T
-            zs.append(z)
-            activation = sigmoid(z)
-            activations.append(activation)
-        c = self.cost(activation, y)
-        # backward pass
-        delta = self.cost_derivative(activations[-1], y) * \
-                sigmoid_prime(zs[-1])
-        db[-1] = np.reshape(np.sum(delta, axis=0), (-1, 1))
-        dw[-1] = np.dot(activations[-2].T, delta)
-        for l in range(2, self.num_layers):
-            z = zs[-l]
-            sp = sigmoid_prime(z)
-            delta = np.dot(delta, self.weights[-l+1].T) * sp
-            db[-l] = np.reshape(np.sum(delta, axis=0), (-1, 1))
-            dw[-l] = np.dot(activations[-l-1].T, delta)
-        return db, dw, c
-
-    def update_mini_batch(self, mini_batch, lr):
-        x, y = mini_batch
-        db, dw, c = self.backprop(x, y)
-        self.weights = [w - (lr/len(x))*nw 
-                for w, nw in zip(self.weights, dw)]
-        self.biases = [b - (lr/len(x))*nb 
-                for b, nb in zip(self.biases, db)]
-        return c
-
-    def cost_derivative(self, output_activations, y):
-        return output_activations - y
-
-    def cost(self, output_activations, y):
-        c = np.sum((y - output_activations)**2)
-        return c
-
-    def evaluate(self, X_test, y_test):
-        outputs = self.feedforward(X_test)
-        y_pred = np.argmax(outputs, axis=1)
-        y = np.argmax(y_test, axis=1)
-        total = np.sum(y_pred == y)
-        return total
-
-def sigmoid(z):
-    z = np.clip(z, -500, 500)
-    return 1.0 / (1.0 + np.exp(-z))
-
-def sigmoid_prime(z):
-    return sigmoid(z) * (1 - sigmoid(z))
+def split_data(data):
+    X, y = data
+    X_train, X_val, X_test = np.split(X, [int(0.6*len(X)), int(0.8*len(X))])
+    y_train, y_val, y_test = np.split(y, [int(0.6*len(y)), int(0.8*len(y))])
+    print('X_train:', X_train.shape, 'y_train:', y_train.shape)
+    print('X_val:', X_val.shape, '\ty_val:', y_val.shape)
+    print('X_test:', X_test.shape, '\ty_test:', y_test.shape)
+    print()
+    training_data = X_train, y_train
+    validation_data = X_val, y_val
+    testing_data = X_test, y_test
+    return training_data, validation_data, testing_data
 
 def main():
     """
     Main Function.
     """
-    # set random seed for reproducibility
-    np.random.seed(0)
+#    datapath = '../data/dashcams/'
+#    width = height = 100
+#    read_data(datapath, width, height)
     # load data
-    X = np.load('X.npy')
-    y = np.load('y.npy')
+    X = np.load('../data/X.npy')
+    y = np.load('../data/y.npy')
     # reshape into num_instances x num_features
     X = np.reshape(X, (len(X), -1))
+    data = X, y
     # shuffle data
-    idx = np.random.permutation(len(X))
-    X = X[idx]
-    y = y[idx]
+    data = shuffle(data)
     # split data
-    X_train, X_val, X_test = np.split(X, [int(0.6*len(X)), int(0.8*len(X))])
-    y_train, y_val, y_test = np.split(y, [int(0.6*len(y)), int(0.8*len(y))])
-    print('X_train:', X_train.shape)
-    print('y_train:', y_train.shape)
-    print('X_val:', X_val.shape)
-    print('y_val:', y_val.shape)
-    print('X_test:', X_test.shape)
-    print('y_test:', y_test.shape)
+    training_data, validation_data, testing_data = split_data(data)
     # create neural network
-    num_features = X_train.shape[1]
-    net = Network([num_features, 400, 2])
-    cost, acc = net.SGD(X_train, y_train, 50, 10, 0.1, X_val, y_val)
-    print('Best Validation Accuracy {0}, Epoch {1}'.format(max(acc),
-        np.argmax(acc)+1))
+    num_features = training_data[0].shape[1]
+    
+    # learning rates
+    learning_rates = [1, 0.1, 0.01, 0.001]
+    # number of hidden units
+    num_hidden = [50, 100, 200]
+    validation_accuracies = {}
+    training_costs = {}
+    for lr in learning_rates:
+        validation_accuracies[lr] = []
+        training_costs[lr] = []
+        for n in num_hidden:
+            print('For lr: {} hidden units: {}'.format(lr, n))
+            net = Network([num_features, n, 2], cost=QuadraticCost)
+            net.large_weight_initializer()
+            _, val_acc, train_cost, _ = net.SGD(training_data, 30, 10, lr, 
+                    reg=0, evaluation_data=validation_data,
+                    monitor_evaluation_accuracy=True,
+                    monitor_evaluation_cost=False,
+                    monitor_training_accuracy=False,
+                    monitor_training_cost=True)
+            validation_accuracies[lr].append(val_acc)
+            training_costs[lr].append(train_cost)
 
     # display plots
-    plt.figure()
-    plt.subplot(121), plt.plot(cost)
-    plt.title('Training Cost'), plt.xlabel('Epoch'), plt.ylabel('Cost')
-    plt.ylim([0,0.5])
-    plt.subplot(122), plt.plot(acc)
-    plt.title('Validation Accuracy'), plt.xlabel('Epoch'),
-    plt.ylabel('Accuracy')
-    plt.ylim([0,100])
+    for lr in learning_rates:
+        plt.figure()
+        plt.subplot(121)
+        for n, cost in zip(num_hidden, training_costs[lr]):
+            plt.plot(cost, label='num_hidden=' + str(n))
+        plt.title('Training Cost for lr =' + str(lr))
+        plt.xlabel('Epoch'), plt.ylabel('Cost'), plt.ylim(0, 1)
+
+        plt.subplot(122)
+        for n, accuracy in zip(num_hidden, validation_accuracies[lr]):
+            plt.plot(accuracy, label='num_hidden=' + str(n))
+        plt.title('Validation Accuracy for lr =' + str(lr))
+        plt.xlabel('Epoch'), plt.ylabel('Accuracy'), plt.ylim(0, 100)
+        plt.legend(loc='lower right')
+    
     plt.show()
-
-
 
 if __name__ == '__main__':
     main()
