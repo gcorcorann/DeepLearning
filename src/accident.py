@@ -12,7 +12,7 @@ import numpy as np
 import cv2
 
 # set random seet for reproducibility
-np.random.seed(1234)
+#np.random.seed(1234)
 
 ### Define the quadratic and cross-entropy cost functions
 
@@ -279,43 +279,33 @@ def main():
     num_features = training_data[0].shape[1]
     
     # learning rates
-    learning_rates = [1, 0.1, 0.01, 0.001]
+    learning_rate = 0.1
     # number of hidden units
-    num_hidden = [50, 100, 200]
-    validation_accuracies = {}
-    training_costs = {}
-    for lr in learning_rates:
-        validation_accuracies[lr] = []
-        training_costs[lr] = []
-        for n in num_hidden:
-            print('For lr: {} hidden units: {}'.format(lr, n))
-            net = Network([num_features, n, 2], cost=QuadraticCost)
-            net.large_weight_initializer()
-            _, val_acc, train_cost, _ = net.SGD(training_data, 30, 10, lr, 
-                    reg=0, evaluation_data=validation_data,
-                    monitor_evaluation_accuracy=True,
-                    monitor_evaluation_cost=False,
-                    monitor_training_accuracy=False,
-                    monitor_training_cost=True)
-            validation_accuracies[lr].append(val_acc)
-            training_costs[lr].append(train_cost)
+    num_hidden = 200
+    net = Network([num_features, num_hidden, 2], cost=QuadraticCost)
+#    net.large_weight_initializer()
+    _, val_acc, train_cost, _ = net.SGD(training_data, 30, 10, learning_rate, 
+            reg=0, evaluation_data=validation_data,
+            monitor_evaluation_accuracy=True,
+            monitor_evaluation_cost=False,
+            monitor_training_accuracy=False,
+            monitor_training_cost=True)
 
     # display plots
-    for lr in learning_rates:
-        plt.figure()
-        plt.subplot(121)
-        for n, cost in zip(num_hidden, training_costs[lr]):
-            plt.plot(cost, label='num_hidden=' + str(n))
-        plt.title('Training Cost for lr =' + str(lr))
-        plt.xlabel('Epoch'), plt.ylabel('Cost'), plt.ylim(0, 1)
+    plt.figure()
+    plt.subplot(121)
+    plt.plot(train_cost, label='num_hidden=' + str(num_hidden))
+    plt.title('Training Cost for lr =' + str(learning_rate))
+    plt.xlabel('Epoch'), plt.ylabel('Cost'), plt.ylim(0, 1)
 
-        plt.subplot(122)
-        for n, accuracy in zip(num_hidden, validation_accuracies[lr]):
-            plt.plot(accuracy, label='num_hidden=' + str(n))
-        plt.title('Validation Accuracy for lr =' + str(lr))
-        plt.xlabel('Epoch'), plt.ylabel('Accuracy'), plt.ylim(0, 100)
-        plt.legend(loc='lower right')
-    
+    plt.subplot(122)
+    plt.plot(val_acc, label='num_hidden=' + str(num_hidden))
+    plt.title('Validation Accuracy for lr =' + str(learning_rate))
+    plt.xlabel('Epoch'), plt.ylabel('Accuracy'), plt.ylim(0, 100)
+    plt.legend(loc='lower right')
+
+    plt.savefig(str(learning_rate) + '.png')
+
     plt.show()
 
 if __name__ == '__main__':
