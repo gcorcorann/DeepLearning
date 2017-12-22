@@ -279,7 +279,7 @@ def main():
     num_features = training_data[0].shape[1]
     
     # learning rates
-    learning_rate = 0.1
+    learning_rate = 0.01
     # number of hidden units
     num_hidden = 200
     net = Network([num_features, num_hidden, 2], cost=QuadraticCost)

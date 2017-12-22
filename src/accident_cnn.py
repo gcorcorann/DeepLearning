@@ -1,75 +1,87 @@
 #!/usr/bin/env python3
 """
-Accident CNN Module
+accident_cnn.py
 """
-# Third-party Libraries
+import mnist_loader
 import numpy as np
+from torch.autograd import Variable
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-# set random seed for reproducibility
-np.random.seed(1234)
-# Constants
-GPU = False
-if GPU:
-    print('Trying to run under a GPU.')
-else:
-    print('Running with a CPU.')
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.fc1 = nn.Linear(28*28, 100)
+        self.fc2 = nn.Linear(100, 10)
 
-# Main class used to construct and train networks
-class Network():
-    def __init__(self, layers, mini_batch_size):
-        """
-        Takes list a of `layers` describing the network architecture and a value
-        for the `mini_batch_size` to be used during training by stochastic
-        gradient descent.
-        """
-        self.layers = layers
-        self.mini_batch_size = mini_batch_size
-        self.params = [param for layer in self.layers for param in layer.params]
-        
+    def forward(self, x):
+        x = x.view(-1, 28*28)
+        x = F.sigmoid(self.fc1(x))
+        x = F.sigmoid(self.fc2(x))
+        return x
 
+    def SGD(self, training_data, epochs, batch_size, lr, validation_data):
+        if validation_data:
+            n_val = len(validation_data[0])
+        n_train = len(training_data[0])
+        validation_cost, validation_accuracy = [], []
+        training_cost, training_accuracy = [], []
+        # set optimizer
+        criterion = nn.CrossEntropyLoss()
 
+        for epoch in range(epochs):
+            running_loss = 0.0
+            training_data = shuffle(training_data)
+            mini_batches = [(training_data[0][k:k+batch_size],
+                training_data[1][k:k+batch_size])
+                for k in range(0, n_train, batch_size)]
 
-class FullyConnectedLayer():
-    def __init__(self, n_in, n_out, activation_fn=F.sigmoid, p_dropout=0.0):
-        self.n_in = n_in
-        self.n_out = n_out
-        self.p_dropout = p_dropout
-        # initialize weights and biases
-        self.w = torch.from_numpy(np.asarray(
-            np.random.normal(
-                loc=0.0, scale=np.sqrt(1.0/n_in), size=(n_in, n_out)), 
-            dtype=np.float32))
-        self.b = torch.from_numpy(np.asarray(
-            np.random.normal(
-                loc=0.0, scale=1.0, size=(n_out,)),
-            dtype=np.float32))
-        self.params = [self.w, self.b]
+            for mini_batch in mini_batches:
+                x, y = mini_batch
+                # wrap in Tensor
+                x = torch.Tensor(x)
+                y = torch.LongTensor(y)
+                # wrap in Variable
+                x = Variable(x)
+                y = Variable(y)
+                # zero the parameter gradients
+                self.zero_grad()
+                # forward + backward + optimize
+                outputs = self.forward(x)
+                loss = criterion(outputs, y)
+                loss.backward()
 
-    def set_inpt(self, inpt, inpt_dropout, mini_batch_size):
-        self.inpt = inpt.reshape((mini_batch_size, self.n_in))
-        self.output = sigmoid(
-                (1-self.p_dropout)*torch.dot(self.inpt, self.w) + self.b)
-        self.y_out = torch.argmax(self.output, axis=1)
-        self.inpt_dropout = dropout_layer(
-                inpt_dropout.reshape((mini_batch_size, self.n_in)),
-                self.p_dropout)
-        self.output_dropout = sigmoid(
-                torch.dot(self.inpt_dropout, self.w) + self.b)
-        
-    def accuracy(self, y):
-        """
-        Return the accuracy for the mini-batch.
-        """
-        return torch.mean(torch.eq(y, self.y_out))
-        
+                # update the weights
+                for f in self.parameters():
+                    f.data.sub_(f.grad.data * lr)
+    
+                # print statistics
+                running_loss += loss.data[0]
+    
+            print('Epoch {}, loss {}'.format(epoch, running_loss))
+            running_loss = 0.0
+    
+        print('Finished Training.')
+    
+        # testing
+        correct = 0
+        total = 0
+        x, y = validation_data
+        # wrap in tensor
+        x = torch.Tensor(x)
+        y = torch.LongTensor(y)
+        outputs = self.forward(Variable(x))
+        _, predicted = torch.max(outputs.data, 1)
+        total += y.size(0)
+        correct += (predicted == y).sum()
+        print(correct)
+        exit()
+            
+    
+        print('Accuracy {}'.format(100*correct / total))
 
 ### Miscellaneous functions
-def sigmoid(z):
-    z = np.clip(z, -500, 500)
-    return 1.0 / (1.0 + np.exp(-z))
-
 def shuffle(data):
     X, y = data
     idx = np.random.permutation(len(X))
@@ -77,32 +89,13 @@ def shuffle(data):
     y = y[idx]
     return X, y
 
-def split_data(data):
-    X, y = data
-    X_train, X_val, X_test = np.split(X, [int(0.6*len(X)), int(0.8*len(X))])
-    y_train, y_val, y_test = np.split(y, [int(0.6*len(y)), int(0.8*len(y))])
-    print('X_train:', X_train.shape, 'y_train:', y_train.shape)
-    print('X_val:', X_val.shape, '\ty_val:', y_val.shape)
-    print('X_test:', X_test.shape, '\ty_test:', y_test.shape)
-    print()
-    training_data = X_train, y_train
-    validation_data = X_val, y_val
-    testing_data = X_test, y_test
-    return training_data, validation_data, testing_data
-
 def main():
-    """ Main Function. """
-    fc = FullyConnectedLayer(100, 10)
-    # load data
-#    X = np.load('../data/X.npy')
-#    y = np.load('../data/y.npy')
-#    # reshape into num_instances x num_features
-#    X = np.reshape(X, (len(X), -1))
-#    data = X, y
-#    # shuffle data
-#    data = shuffle(data)
-#    # split data
-#    training_data, validation_data, testing_data = split_data(data)
+    training_data, validation_data, _ = mnist_loader.load_data()
+    print(training_data[0].shape, training_data[1].shape)
+    net = Net()
+    print(net)
+    net.SGD(training_data, 5, 10, 0.1, validation_data)
+
     
 
 if __name__ == '__main__':
