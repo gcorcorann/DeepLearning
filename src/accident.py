@@ -11,11 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
-# set random seet for reproducibility
-#np.random.seed(1234)
-
 ### Define the quadratic and cross-entropy cost functions
-
 class CrossEntropyCost():
     """
     Cross Entropy Cost Function and Derivative.
@@ -39,7 +35,6 @@ class QuadraticCost():
     @staticmethod
     def delta(z, a, y):
         return (a-y) * sigmoid_prime(z)
-
 
 ### Main Network class
 class Network():

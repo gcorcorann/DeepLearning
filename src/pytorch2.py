@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # constants
-GPU = True
+GPU = False
 
 # Define Complete Model
 class Network():
@@ -60,15 +60,15 @@ class ConvPoolLayer():
     def forward(self, x):
         x = x.view(-1, *self.image_shape[1:])
         out = nn.functional.conv2d(x, self.W, self.b)
+        out = self.activation(out)
         out = nn.functional.max_pool2d(out, self.poolsize)
         return out
 
 class FullyConnectedLayer():
-    def __init__(self, n_in, n_out, activation, p_dropout=0.0):
+    def __init__(self, n_in, n_out, activation=None):
         self.n_in = n_in
         self.n_out = n_out
         self.activation = activation
-        self.p_dropout = p_dropout
         # initialize weights and biases
         if GPU:
             self.W = Variable((torch.randn(n_in, n_out)/np.sqrt(n_in)).cuda(), 
@@ -82,9 +82,10 @@ class FullyConnectedLayer():
 
     def forward(self, x): 
         x = x.view(-1, self.n_in)
-        z = torch.mm(x, self.W) + self.b
-        a = self.activation(z)
-        return a
+        out = torch.mm(x, self.W) + self.b
+        if self.activation is not None:
+            out = self.activation(out)
+        return out
 
 # Define Cost Function
 class CrossEntropyCost():
@@ -152,11 +153,9 @@ def main():
     """
     # hyperparameters
     num_classes = 2
-    hidden_size = 100
-    output_size = 10
     num_epochs = 30
-    learning_rate = 0.1
-    batch_size = 10
+    learning_rate = 0.001
+    batch_size = 100
 
     # read data
     X = np.load('../data/X.npy')
@@ -164,26 +163,29 @@ def main():
     # shuffle data
     X, y = shuffle_numpy(X, y)
     # split data
-    training_data, validation_data, testing_data = split_data(X, y)
-#    training_data, validation_data, _ = mnist_loader.load_data()
+    training_data, validation_data, _ = split_data(X, y)
+    X_train, y_train = training_data
+    X_valid, y_valid = validation_data
+    # number of examples
+    n_train = len(X_train)
+    n_valid = len(X_valid)
 
-    #TODO remove small sample size
-    new_training_data = (training_data[0][:1000], training_data[1][:1000])
-    new_validation_data = (validation_data[0][:1000], validation_data[1][:1000])
-    # number of training examples
-    n = len(new_training_data[0])
     # create Variables
-    X_tr, y_tr = load_data(new_training_data, num_classes)
-    X_val, y_val = load_data(new_validation_data, num_classes)
+    X_tr, y_tr = load_data(training_data, num_classes)
+    X_val, y_val = load_data(validation_data, num_classes)
 
     # create network
-    conv1 = ConvPoolLayer(filter_shape=(20, 3, 5, 5), 
-            image_shape=(batch_size, 3, 100, 100), activation=sigmoid)
-    conv2 = ConvPoolLayer(filter_shape=(40, 20, 5, 5),
-            image_shape=(batch_size, 20, 48, 48), activation=sigmoid)
-    fc1 = FullyConnectedLayer(40*22*22, 200, sigmoid)
-    fc2 = FullyConnectedLayer(200, num_classes, sigmoid)
-    net = Network([conv1, conv2, fc1, fc2])
+    conv1 = ConvPoolLayer(filter_shape=(6, 3, 5, 5), 
+            image_shape=(batch_size, 3, 100, 100), activation=nn.ReLU())
+    conv2 = ConvPoolLayer(filter_shape=(16, 6, 5, 5),
+            image_shape=(batch_size, 6, 48, 48), activation=nn.ReLU())
+    fc1 = FullyConnectedLayer(16*22*22, 120, activation=nn.ReLU())
+    fc2 = FullyConnectedLayer(120, 84, activation=nn.ReLU())
+    fc3 = FullyConnectedLayer(84, num_classes, activation=sigmoid)
+    net = Network([conv1, conv2, fc1, fc2, fc3])
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(net.params, lr=learning_rate)
 
     # time network
     t = time.time()
@@ -197,18 +199,20 @@ def main():
         X_tr, y_tr = shuffle_tensor(X_tr, y_tr)
         # generator to loop through mini batches
         mini_batch = ((X_tr[k:k+batch_size], y_tr[k:k+batch_size])
-                for k in range(0, n, batch_size))
+                for k in range(0, n_train, batch_size))
         # for each mini batch
         for x_batch, y_batch in mini_batch:
             # forward pass
             outs = net.forward(x_batch)
-    
             # compute loss
+#            optimizer.zero_grad()
+#            loss = criterion(outs, y_batch)
             loss = CrossEntropyCost.fn(outs, y_batch)
             loss /= len(x_batch)
     
             # backpropagation
             loss.backward()
+#            optimizer.step()
         
             # update the weights
             for param in net.params:
@@ -234,8 +238,8 @@ def main():
         for x_batch, y_batch in mini_batch:
             outs = net.forward(x_batch)
             _, y_pred = torch.max(outs.data, 1)
-            _, y = torch.max(y_batch.data, 1)
-            correct += torch.sum((y_pred == y).int())
+            _, y_act = torch.max(y_batch, 1)
+            correct += torch.sum((y_pred == y_act.data).int())
             
         accuracy = 100 * correct / n_val
         print('\tValidation Accuracy:', accuracy)
