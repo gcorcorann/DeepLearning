@@ -226,9 +226,9 @@ def read_data(data_path, width, height):
         img = img / img_min.max()
         X[i] = img
         i += 1
-    y = np.zeros((num_instances, 2), dtype=np.int)
-    y[:len(imgs_pos), 1] = 1
-    y[len(imgs_pos):, 0] = 1
+    y = np.zeros((num_instances), dtype=np.int)
+    y[:len(imgs_pos)] = 1
+    y[len(imgs_pos):] = 0
     np.save('../data/X.npy', X)
     np.save('../data/y.npy', y)
     return X, y
@@ -257,12 +257,15 @@ def main():
     """
     Main Function.
     """
-#    datapath = '../data/dashcams/'
+#    datapath = '/home/gary/datasets/accv/images/'
 #    width = height = 100
 #    read_data(datapath, width, height)
     # load data
     X = np.load('../data/X.npy')
     y = np.load('../data/y.npy')
+    y_onehot = np.zeros((len(y), 2))
+    y_onehot[np.arange(len(y)), y] = 1
+    y = y_onehot
     # reshape into num_instances x num_features
     X = np.reshape(X, (len(X), -1))
     data = X, y
@@ -274,7 +277,7 @@ def main():
     num_features = training_data[0].shape[1]
     
     # learning rates
-    learning_rate = 0.01
+    learning_rate = 0.001
     # number of hidden units
     num_hidden = 200
     net = Network([num_features, num_hidden, 2], cost=QuadraticCost)

@@ -93,14 +93,22 @@ def split_data(X, y):
     return training_data, validation_data, testing_data
 
 def main():
+    # check for gpu
+    if torch.cuda.is_available():
+        GPU = True
+    else:
+        GPU = False
     # hyper-parameters
-    num_epochs = 30
+    num_epochs = 50
     learning_rate = 0.001
-    batch_size = 100
+    batch_size = 1000
 
     # read data
     X = np.load('../data/X.npy')
     y = np.load('../data/y.npy')
+    y_onehot = np.zeros((len(y), 2))
+    y_onehot[np.arange(len(y)), y] = 1
+    y = y_onehot
     # shuffle data
     X, y = shuffle_numpy(X, y)
     # remove 1-hot
@@ -118,6 +126,8 @@ def main():
 
     # define model
     model = Network(input_size=(3,100,100))
+    if GPU:
+        model = model.cuda()
 
     # loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -133,8 +143,12 @@ def main():
                 for k in range(0, n_train, batch_size))
         # for each mini batch
         for x_batch, y_batch in mini_batch:
-            inputs = Variable(torch.from_numpy(x_batch))
-            targets = Variable(torch.from_numpy(y_batch))
+            if GPU:
+                inputs = Variable(torch.from_numpy(x_batch).cuda())
+                targets = Variable(torch.from_numpy(y_batch).cuda())
+            else:
+                inputs = Variable(torch.from_numpy(x_batch))
+                targets = Variable(torch.from_numpy(y_batch))
 
             # forward + backward + optimize
             optimizer.zero_grad()
@@ -156,8 +170,12 @@ def main():
         total = 0
         correct = 0
         for x_batch, y_batch in mini_batch:
-            inputs = Variable(torch.from_numpy(x_batch))
-            labels = torch.from_numpy(y_batch)
+            if GPU:
+                inputs = Variable(torch.from_numpy(x_batch).cuda())
+                labels = torch.from_numpy(y_batch).cuda()
+            else:
+                inputs = Variable(torch.from_numpy(x_batch))
+                labels = torch.from_numpy(y_batch)
             outputs = model(inputs)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -175,7 +193,7 @@ def main():
     plt.subplot(121), plt.plot(training_losses)
     plt.title('Training Loss'), plt.xlabel('Epoch'), plt.ylabel('Loss')
     plt.subplot(122), plt.plot(validation_accuracies)
-    plt.title('Training Accuracy'), plt.xlabel('Epoch'),
+    plt.title('Validation Accuracy'), plt.xlabel('Epoch'),
     plt.ylabel('Accuracy')
     plt.ylim(0,100)
     plt.show()
