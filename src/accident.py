@@ -257,9 +257,10 @@ def main():
     """
     Main Function.
     """
-#    datapath = '/home/gary/datasets/accv/images/'
-#    width = height = 100
-#    read_data(datapath, width, height)
+    datapath = '../data/dashcams/'
+    width = height = 100
+    read_data(datapath, width, height)
+    exit()
     # load data
     X = np.load('../data/X.npy')
     y = np.load('../data/y.npy')
